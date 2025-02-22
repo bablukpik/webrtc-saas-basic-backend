@@ -1,0 +1,53 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String        @id @default(cuid())
+  email       String        @unique
+  name        String?
+  avatar      String?
+  password    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  recordings  Recording[]
+  callHistory CallHistory[]
+}
+
+model Recording {
+  id        String      @id @default(cuid())
+  userId    String
+  fileUrl   String
+  duration  Int
+  createdAt DateTime    @default(now())
+  callId    String
+  user      User        @relation(fields: [userId], references: [id])
+  call      CallHistory @relation(fields: [callId], references: [id])
+}
+
+model CallHistory {
+  id            String      @id @default(cuid())
+  initiatorId   String
+  participantId String
+  startTime     DateTime    @default(now())
+  endTime       DateTime?
+  duration      Int?
+  callType      CallType
+  recordings    Recording[]
+  initiator     User        @relation(fields: [initiatorId], references: [id])
+
+  @@index([initiatorId])
+  @@index([participantId])
+}
+
+enum CallType {
+  AUDIO
+  VIDEO
+  SCREEN_SHARE
+}
