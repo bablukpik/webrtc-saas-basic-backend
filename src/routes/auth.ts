@@ -12,10 +12,11 @@ router.post('/register', async (req, res) => {
   const userSchema = z.object({
     email: z.string().email(),
     password: z.string().min(6),
+    name: z.string().min(1),
   });
 
   try {
-    const { email, password } = userSchema.parse(req.body);
+    const { email, password, name } = userSchema.parse(req.body);
     const existingUser = await prisma.user.findUnique({ where: { email } });
 
     if (existingUser) {
@@ -27,7 +28,7 @@ router.post('/register', async (req, res) => {
       data: {
         email,
         password: hashedPassword,
-        name: null,
+        name,
         avatar: null,
       },
     });
@@ -69,7 +70,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign({ userId: user.id }, jwtSecret, {
-      expiresIn: '7d',
+      expiresIn: '24h',
     });
 
     res.json({ token });
@@ -78,6 +79,34 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: error.errors });
     }
     res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Add this endpoint to your existing auth.ts file
+router.get('/me', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid token' });
   }
 });
 
