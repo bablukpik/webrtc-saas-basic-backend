@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { ZodError } from 'zod';
 import prisma from '../lib/prisma';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -15,8 +16,11 @@ router.post('/start', async (req, res) => {
 
   try {
     const { initiatorId, participantId, callType } = callSchema.parse(req.body);
+    const callId = uuidv4(); // Generate a unique Call ID
+
     const call = await prisma.callHistory.create({
       data: {
+        id: callId, // Use the generated Call ID
         initiatorId,
         participantId,
         callType,
@@ -54,4 +58,4 @@ router.post('/end', async (req, res) => {
   }
 });
 
-export { router as callRouter }; 
+export { router as callRouter };
