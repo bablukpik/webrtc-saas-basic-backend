@@ -17,8 +17,12 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
+    origin: [
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+      'http://172.19.0.1:3000',
+      'https://webrtc-saas-starter.vercel.app',
+    ],
+    // methods: ['GET', 'POST'],
   },
 });
 
