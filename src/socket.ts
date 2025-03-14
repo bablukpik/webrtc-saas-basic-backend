@@ -41,6 +41,8 @@ export const setupSocketHandlers = (io: Server) => {
 
       console.log('User registered:', user);
 
+      // Emit user registered event to the client 
+      // Or return a response if the user is successfully registered
       socket.emit(SocketEvents.USER_REGISTERED, {
         userId: data.userId,
         socketId: socket.id,
@@ -94,7 +96,7 @@ export const setupSocketHandlers = (io: Server) => {
       targetUser.currentCallId = callSession.callId;
 
       console.log('Emitting incoming call to:', targetUser.socketId);
-      
+
       // Emit incoming call event to recipient
       io.to(targetUser.socketId).emit(SocketEvents.INCOMING_CALL, {
         callerId: data.callerId,
