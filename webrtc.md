@@ -20,6 +20,71 @@ This document describes the WebRTC implementation for video calling functionalit
 - `user-registered`: Confirmation of successful user registration
   - Response: `{ userId, socketId, success }`
 
+#### User Registration Events Details
+
+The REGISTER_USER event is a crucial part of the WebSocket connection management. Let me explain its purpose:
+
+1. When a user connects to the WebSocket server, we need to maintain a mapping between:
+
+- Their user ID (from the database)
+- Their socket ID (unique connection ID)
+- Their current connection status
+
+2. Here's how it works in the socket-provider.tsx:
+
+```typescript
+socketInstance.on('connect', () => {
+  console.log('Socket connected with ID:', socketInstance.id);
+  setIsConnected(true);
+
+  // Register user when socket connects
+  socketInstance.emit(SocketEvents.REGISTER_USER, {
+    userId, // The user's database ID
+    userName, // The user's name
+    socketId: socketInstance.id, // The socket connection ID
+  });
+});
+```
+
+3. On the server side (src/socket.ts), this registration is handled:
+
+```typescript
+socket.on(SocketEvents.REGISTER_USER, (data) => {
+  const user: SocketUser = {
+    userId: data.userId,
+    userName: data.userName,
+    socketId: socket.id,
+    isAvailable: true, // Initially available for calls
+  };
+
+  // Store the user in our connected users map
+  connectedUsers.set(data.userId, user);
+  socket.user = user;
+
+  socket.emit(SocketEvents.USER_REGISTERED, {
+    userId: data.userId,
+    socketId: socket.id,
+    success: true,
+  });
+});
+```
+
+**The purpose is to:**
+
+- Keep track of which users are currently online
+- Maintain a mapping between user IDs and their socket connections
+- Know which users are available for calls
+- Enable direct messaging/calling between users by looking up their socket ID
+- Handle cleanup when users disconnect
+- Manage user availability status for video calls
+
+**This registration system is essential for features like:**
+
+- Finding online users
+- Checking if a user is available for a call
+- Routing call requests to the correct socket connection
+- Managing call states between users
+
 ### Call Setup Events
 
 1. `check-user-availability`: Checks if target user is available for call
@@ -176,3 +241,99 @@ const constraints = {
 3. Permission Scenarios
 4. Call Flow Edge Cases
 5. Error Handling
+
+## Detailed Connection Flow
+
+### Peer Connection Setup
+
+1. Create a singleton method of the Peer Connection
+2. Create a Peer Connection instance with STUN/TURN configuration
+3. Add local stream to peer connection using `pc.addTrack()`
+4. Listen for remote stream using `pc.ontrack()`
+5. Listen for ICE Candidates using `pc.onicecandidate()`
+6. When ICE Candidate is received from STUN/TURN server:
+   - Send it to Signaling Server
+   - Signaling Server forwards it to Remote Machine
+
+### Call Initiation Flow
+
+1. Local Machine (Caller):
+
+   ```typescript
+   // Create and send offer
+   const offer = await peerConnection.createOffer();
+   await peerConnection.setLocalDescription(offer);
+   socket.emit('initiate-call', {
+     from: localUserId,
+     to: remoteUserId,
+     offer,
+   });
+   ```
+
+2. Signaling Server:
+
+   - Receives offer
+   - Forwards to specific remote user
+
+   ```typescript
+   socket.on('initiate-call', ({ from, to, offer }) => {
+     io.to(to).emit('incoming-call', { from, offer });
+   });
+   ```
+
+3. Remote Machine (Callee):
+
+   ```typescript
+   // Create and send answer
+   await peerConnection.setRemoteDescription(offer);
+   const answer = await peerConnection.createAnswer();
+   await peerConnection.setLocalDescription(answer);
+   socket.emit('call-accepted', { to: callerId, answer });
+   ```
+
+4. ICE Candidate Exchange:
+
+   ```typescript
+   // Local Machine
+   peerConnection.onicecandidate = (event) => {
+     if (event.candidate) {
+       socket.emit('ice-candidate', {
+         to: remoteUserId,
+         candidate: event.candidate,
+       });
+     }
+   };
+
+   // Remote Machine
+   socket.on('ice-candidate', async ({ candidate }) => {
+     await peerConnection.addIceCandidate(candidate);
+   });
+   ```
+
+### Connection Establishment Sequence
+
+```mermaid
+sequenceDiagram
+participant Caller
+participant Server
+participant Callee
+Caller->>Server: Initiate Call (with offer)
+Server->>Callee: Forward Offer
+Callee->>Server: Send Answer
+Server->>Caller: Forward Answer
+par ICE Candidate Exchange
+Caller->>Server: Send ICE Candidate
+Server->>Callee: Forward ICE Candidate
+and
+Callee->>Server: Send ICE Candidate
+Server->>Caller: Forward ICE Candidate
+end
+```
+
+### Key Points
+
+1. Offer/Answer exchange establishes media configuration
+2. ICE candidates enable peer-to-peer connection
+3. STUN/TURN servers help with NAT traversal
+4. Signaling server only facilitates initial connection
+5. Once connected, media flows directly between peers
