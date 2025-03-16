@@ -40,8 +40,10 @@ export const setupSocketHandlers = (io: Server) => {
       socket.user = user;
 
       console.log('User registered:', user);
+      console.log('Connected users:', Array.from(connectedUsers.entries()));
+      console.log('Active calls:', Array.from(activeCalls.entries()));
 
-      // Emit user registered event to the client 
+      // Emit user registered event to the client
       // Or return a response if the user is successfully registered
       socket.emit(SocketEvents.USER_REGISTERED, {
         userId: data.userId,
@@ -134,8 +136,8 @@ export const setupSocketHandlers = (io: Server) => {
     });
 
     // Handle call end
-    socket.on(SocketEvents.CALL_ENDED, (data) => {
-      const otherUser = connectedUsers.get(data.targetUserId);
+    socket.on(SocketEvents.CALL_ENDED, ({ targetUserId }) => {
+      const otherUser = connectedUsers.get(targetUserId);
       if (otherUser) {
         // Mark both users as available
         if (socket.user) socket.user.isAvailable = true;
