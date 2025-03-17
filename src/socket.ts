@@ -173,5 +173,18 @@ export const setupSocketHandlers = (io: Server) => {
       }
       console.log('Client disconnected:', socket.id);
     });
+
+    // Handle ICE candidate
+    socket.on(SocketEvents.ICE_CANDIDATE, (data) => {
+      const targetUser = connectedUsers.get(data.targetUserId);
+      
+      if (targetUser) {
+        // Forward the ICE candidate to the target user
+        io.to(targetUser.socketId).emit(SocketEvents.ICE_CANDIDATE, {
+          candidate: data.candidate,
+          userId: socket.user?.userId // Send the sender's ID
+        });
+      }
+    });
   });
 };
