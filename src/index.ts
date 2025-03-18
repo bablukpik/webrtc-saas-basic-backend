@@ -21,6 +21,7 @@ const io = new Server(httpServer, {
       process.env.FRONTEND_URL || 'http://localhost:3000',
       'http://172.19.0.1:3000',
       'https://webrtc-saas-starter.vercel.app',
+      'http://192.168.0.102:3000',
     ],
     // methods: ['GET', 'POST'],
   },
