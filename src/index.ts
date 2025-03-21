@@ -1,7 +1,8 @@
 import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { config } from 'dotenv';
@@ -14,16 +15,27 @@ import { uploadRouter } from './routes/upload';
 config();
 
 const app = express();
+
+// CORS configuration
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true, // Important for cookies
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
+app.use(cookieParser());
+app.use(express.json());
+
+// Socket.io setup with CORS
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-      'http://172.19.0.1:3000',
-      'https://webrtc-saas-starter.vercel.app',
-      'http://192.168.0.102:3000',
-    ],
-    // methods: ['GET', 'POST'],
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+    methods: ['GET', 'POST'],
   },
 });
 
@@ -34,10 +46,6 @@ const subClient = pubClient.duplicate();
 Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
   io.adapter(createAdapter(pubClient, subClient));
 });
-
-// Middleware
-app.use(cors());
-app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRouter);
@@ -50,7 +58,7 @@ setupSocketHandlers(io);
 // Error handling
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
