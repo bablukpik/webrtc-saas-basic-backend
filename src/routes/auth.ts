@@ -7,6 +7,22 @@ import { ZodError } from 'zod';
 
 const router = Router();
 
+const REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7 days
+const ACCESS_TOKEN_EXPIRY = 15 * 60 * 1000; // 15 minutes
+
+// Generate tokens
+const generateTokens = (userId: string) => {
+  const accessToken = jwt.sign({ userId }, process.env.JWT_SECRET!, {
+    expiresIn: '15m', // shorter expiry for access token
+  });
+
+  const refreshToken = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET!, {
+    expiresIn: '7d', // longer expiry for refresh token
+  });
+
+  return { accessToken, refreshToken };
+};
+
 // User Registration
 router.post('/register', async (req, res) => {
   const userSchema = z.object({
@@ -44,7 +60,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// User Login
+// Login Flow or Token Generation Flow
 router.post('/login', async (req, res) => {
   const loginSchema = z.object({
     email: z.string().email(),
@@ -60,6 +76,7 @@ router.post('/login', async (req, res) => {
         email: true,
         password: true,
         role: true,
+        name: true,
       },
     });
 
@@ -67,16 +84,40 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      return res.status(500).json({ message: 'JWT secret is not defined' });
-    }
+    const { accessToken, refreshToken } = generateTokens(user.id);
 
-    const token = jwt.sign({ userId: user.id }, jwtSecret, {
-      expiresIn: '24h',
+    // Store refresh token in database
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken },
     });
 
-    res.json({ token });
+    // res.json({ accessToken, refreshToken });
+
+    // Set HTTP-only cookies
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: REFRESH_TOKEN_EXPIRY,
+    });
+
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: ACCESS_TOKEN_EXPIRY,
+    });
+
+    // Return user data without sensitive information
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
   } catch (error) {
     if (error instanceof ZodError) {
       return res.status(400).json({ message: error.errors });
@@ -85,15 +126,100 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Refresh token endpoint or Token Refresh Flow
+// Verifies refresh token and issues new tokens
+// Sets new HTTP-only cookies
+router.get('/refresh-token', async (req, res) => {
+  //   const { refreshToken } = req.body;
+  const refreshToken = req.cookies.refreshToken;
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'Refresh token required' });
+  }
+
+  try {
+    // Verify refresh token
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET!) as { userId: string };
+
+    // Find user by ID and refresh token
+    const user = await prisma.user.findFirst({
+      where: {
+        AND: [{ id: decoded.userId }, { refreshToken }],
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid refresh token' });
+    }
+
+    // Generate new tokens
+    const tokens = generateTokens(user.id);
+
+    // Update refresh token in database
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: tokens.refreshToken },
+    });
+
+    // res.json(tokens);
+
+    // Set new HTTP-only cookies
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: REFRESH_TOKEN_EXPIRY,
+    });
+
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: ACCESS_TOKEN_EXPIRY,
+    });
+
+    res.json({ message: 'Tokens refreshed' });
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid refresh token' });
+  }
+});
+
+// Logout endpoint or Logout Flow
+router.post('/logout', async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+  // const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({ message: 'Refresh token required' });
+  }
+  try {
+    // Clear refresh token in database
+    await prisma.user.updateMany({
+      where: { refreshToken },
+      data: { refreshToken: null },
+    });
+
+    // Clear cookies
+    res.clearCookie('refreshToken');
+    res.clearCookie('accessToken');
+
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Error clearing refresh token:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // Get user profile
 router.get('/me', async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
+    // const accessToken = req.headers.authorization?.split(' ')[1];
+    const accessToken = req.cookies.accessToken;
+    if (!accessToken) {
       return res.status(401).json({ message: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET!) as { userId: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -110,19 +236,23 @@ router.get('/me', async (req, res) => {
 
     res.json(user);
   } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ message: 'Token expired' });
+    }
     res.status(401).json({ message: 'Invalid token' });
   }
 });
 
 // Get all users (Admin only)
 router.get('/', async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) {
+  // const accessToken = req.headers.authorization?.split(' ')[1];
+  const accessToken = req.cookies.accessToken;
+  if (!accessToken) {
     return res.status(401).json({ message: 'No token provided' });
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET!) as { userId: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -146,6 +276,9 @@ router.get('/', async (req, res) => {
     });
     res.json(users);
   } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ message: 'Token expired' });
+    }
     res.status(401).json({ message: 'Invalid token' });
   }
 });
@@ -153,6 +286,12 @@ router.get('/', async (req, res) => {
 // Update user role (Admin only)
 router.put('/:id/role', async (req, res) => {
   const { role } = req.body;
+  // const accessToken = req.headers.authorization?.split(' ')[1];
+  const accessToken = req.cookies.accessToken;
+
+  if (!accessToken) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
 
   const roleSchema = z.object({
     role: z.enum(['ADMIN', 'USER']),
@@ -161,12 +300,7 @@ router.put('/:id/role', async (req, res) => {
   try {
     roleSchema.parse({ role });
 
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ message: 'No token provided' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET!) as { userId: string };
     const adminUser = await prisma.user.findUnique({ where: { id: decoded.userId } });
 
     if (adminUser?.role !== 'ADMIN') {
@@ -176,6 +310,12 @@ router.put('/:id/role', async (req, res) => {
     const updatedUser = await prisma.user.update({
       where: { id: req.params.id },
       data: { role },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+      },
     });
 
     res.json(updatedUser);
@@ -183,19 +323,23 @@ router.put('/:id/role', async (req, res) => {
     if (error instanceof ZodError) {
       return res.status(400).json({ message: error.errors });
     }
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ message: 'Token expired' });
+    }
     res.status(500).json({ message: 'Internal server error' });
   }
 });
 
 // Delete user (Admin only)
 router.delete('/:id', async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) {
+  // const accessToken = req.headers.authorization?.split(' ')[1];
+  const accessToken = req.cookies.accessToken;
+  if (!accessToken) {
     return res.status(401).json({ message: 'No token provided' });
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET!) as { userId: string };
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
 
     if (user?.role !== 'ADMIN') {
@@ -205,6 +349,9 @@ router.delete('/:id', async (req, res) => {
     await prisma.user.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ message: 'Token expired' });
+    }
     res.status(401).json({ message: 'Invalid token' });
   }
 });
