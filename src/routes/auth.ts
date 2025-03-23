@@ -218,7 +218,7 @@ router.get('/me', async (req, res) => {
     if (!accessToken) {
       return res.status(401).json({ message: 'No token provided' });
     }
-
+    // Decode access token
     const decoded = jwt.verify(accessToken, process.env.JWT_SECRET!) as { userId: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
