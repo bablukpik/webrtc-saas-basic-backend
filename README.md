@@ -2,6 +2,9 @@
 
 A WebRTC-based video calling platform built with Express.js and Socket.IO.
 
+## Frontend Repository
+The frontend code for this project can be found at: [WebRTC SaaS Frontend](https://github.com/bablukpik/webrtc-saas-basic-frontend)
+
 ## Features
 
 - Real-time video/audio calling
