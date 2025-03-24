@@ -22,6 +22,7 @@ export enum SocketEvents {
   CALL_ENDED = 'call-ended',
   CALL_ERROR = 'call-error',
   CANCEL_CALL = 'cancel-call',
+  CALL_CANCELLED = 'call-cancelled',
 
   // WebRTC events
   CALL_ANSWER = 'call-answer',
