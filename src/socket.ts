@@ -186,5 +186,30 @@ export const setupSocketHandlers = (io: Server) => {
         });
       }
     });
+
+    // Add cancel call handler
+    socket.on(SocketEvents.CANCEL_CALL, ({ targetUserId }) => {
+      const targetUser = connectedUsers.get(targetUserId);
+      
+      if (targetUser) {
+        // Mark both users as available again
+        if (socket.user) socket.user.isAvailable = true;
+        targetUser.isAvailable = true;
+
+        // Clear call session if exists
+        if (targetUser.currentCallId) {
+          activeCalls.delete(targetUser.currentCallId);
+          targetUser.currentCallId = undefined;
+        }
+
+        // Notify target user about call cancellation
+        io.to(targetUser.socketId).emit(SocketEvents.CALL_CANCELLED);
+        
+        console.log('Call cancelled:', {
+          from: socket.user?.userId,
+          to: targetUserId,
+        });
+      }
+    });
   });
 };
