@@ -32,64 +32,22 @@ export enum SocketEvents {
   ERROR = 'error',
 }
 
-// Type for socket event payloads
-export interface SocketEventPayloads {
-  [SocketEvents.REGISTER_USER]: {
+// Extend Socket type with our custom properties
+export interface CustomSocket extends Socket {
+  user?: SocketUser;
+  auth?: {
+    token: string;
     userId: string;
     userName: string | null;
-    socketId: string;
-  };
-
-  [SocketEvents.CHECK_USER_AVAILABILITY]: {
-    targetUserId: string;
-  };
-
-  [SocketEvents.INITIATE_CALL]: {
-    targetUserId: string;
-    callerId: string;
-    callerName: string;
-    offer?: RTCSessionDescriptionInit;
-  };
-
-  [SocketEvents.CALL_ANSWER]: {
-    targetUserId: string;
-    answer: RTCSessionDescriptionInit;
-  };
-
-  [SocketEvents.ICE_CANDIDATE]: {
-    targetUserId: string;
-    candidate: RTCIceCandidate;
-  };
-
-  [SocketEvents.CANCEL_CALL]: {
-    targetUserId: string;
   };
 }
 
-// Type for socket event responses
-export interface SocketEventResponses {
-  [SocketEvents.USER_AVAILABILITY_RESPONSE]: {
-    isAvailable: boolean;
-  };
-
-  [SocketEvents.USER_REGISTERED]: {
-    userId: string;
-    socketId: string;
-    success: boolean;
-  };
-
-  [SocketEvents.INCOMING_CALL]: {
-    callerId: string;
-    callerName: string;
-    offer?: RTCSessionDescriptionInit;
-  };
-}
-
-// Server-side specific types
-export interface ConnectedUser {
-  userId: string;
-  socketId: string;
-  userName: string | null;
+// Define the ice candidate interface
+export interface IceCandidate {
+  candidate: string;
+  sdpMLineIndex: number | null;
+  sdpMid: string | null;
+  usernameFragment: string | null;
 }
 
 export interface ActiveCall {
@@ -100,7 +58,6 @@ export interface ActiveCall {
   offer?: RTCSessionDescriptionInit;
 }
 
-// Additional types specific to backend
 export interface SocketUser {
   userId: string;
   userName: string | null;
@@ -116,14 +73,4 @@ export interface CallSession {
   status: 'pending' | 'active' | 'ended';
   startTime: Date;
   endTime?: Date;
-}
-
-// Type for socket with auth data
-export interface AuthenticatedSocket extends Socket {
-  auth: {
-    token: string;
-    userId: string;
-    userName: string | null;
-  };
-  user?: SocketUser;
 }

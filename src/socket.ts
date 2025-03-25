@@ -1,27 +1,9 @@
-import { Server, Socket } from 'socket.io';
-import { SocketEvents, SocketUser, CallSession } from './types/socket-events';
+import { Server } from 'socket.io';
+import { SocketEvents, SocketUser, CallSession, CustomSocket } from './types/socket-events';
 
 // Store connected users and active calls
 const connectedUsers = new Map<string, SocketUser>();
 const activeCalls = new Map<string, CallSession>();
-
-// Extend Socket type with our custom properties
-interface CustomSocket extends Socket {
-  user?: SocketUser;
-  auth?: {
-    token: string;
-    userId: string;
-    userName: string | null;
-  };
-}
-
-// Define the ice candidate interface
-interface IceCandidate {
-  candidate: string;
-  sdpMLineIndex: number | null;
-  sdpMid: string | null;
-  usernameFragment: string | null;
-}
 
 export const setupSocketHandlers = (io: Server) => {
   io.on('connection', (socket: CustomSocket) => {
@@ -177,12 +159,12 @@ export const setupSocketHandlers = (io: Server) => {
     // Handle ICE candidate
     socket.on(SocketEvents.ICE_CANDIDATE, (data) => {
       const targetUser = connectedUsers.get(data.targetUserId);
-      
+
       if (targetUser) {
         // Forward the ICE candidate to the target user
         io.to(targetUser.socketId).emit(SocketEvents.ICE_CANDIDATE, {
           candidate: data.candidate,
-          userId: socket.user?.userId // Send the sender's ID
+          userId: socket.user?.userId, // Send the sender's ID
         });
       }
     });
@@ -190,7 +172,7 @@ export const setupSocketHandlers = (io: Server) => {
     // Add cancel call handler
     socket.on(SocketEvents.CANCEL_CALL, ({ targetUserId }) => {
       const targetUser = connectedUsers.get(targetUserId);
-      
+
       if (targetUser) {
         // Mark both users as available again
         if (socket.user) socket.user.isAvailable = true;
@@ -204,7 +186,7 @@ export const setupSocketHandlers = (io: Server) => {
 
         // Notify target user about call cancellation
         io.to(targetUser.socketId).emit(SocketEvents.CALL_CANCELLED);
-        
+
         console.log('Call cancelled:', {
           from: socket.user?.userId,
           to: targetUserId,
