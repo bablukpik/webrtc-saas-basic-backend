@@ -3,6 +3,7 @@
 A WebRTC-based video calling platform built with Express.js and Socket.IO.
 
 ## Frontend Repository
+
 The frontend code for this project can be found at: [WebRTC SaaS Frontend](https://github.com/bablukpik/webrtc-saas-basic-frontend)
 
 ## Features
@@ -72,8 +73,8 @@ TURN_PASSWORD="your-turn-password"
 1. Clone the repository
 
 ```bash
-git clone <repository-url>
-cd webrtc-saas
+git clone git@github.com:bablukpik/webrtc-saas-basic-backend.git
+cd webrtc-saas-basic-backend
 ```
 
 2. Install dependencies
@@ -93,6 +94,28 @@ npm run prisma:generate
 ```bash
 npm run prisma:migrate
 ```
+
+5. Seed the database
+
+```bash
+npm run prisma:seed
+```
+
+This will create two test users:
+
+Admin User:
+
+- Email: admin@email.com
+- Password: Admin@123
+- Role: ADMIN
+
+Test User:
+
+- Email: user@email.com
+- Password: Admin@123
+- Role: USER
+
+You can use these accounts to test the video calling functionality.
 
 ## Running the Application
 
